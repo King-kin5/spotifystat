@@ -4,24 +4,42 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timezone
 import time
+import os
+import sys
+import io
+from dotenv import load_dotenv
+
+# Fix Unicode encoding issues on Windows
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# Load environment variables
+load_dotenv()
 
 # Spotify API Configuration
-SPOTIPY_CLIENT_ID = '838931183cf24e61b9c9b5458ebca113'
-SPOTIPY_CLIENT_SECRET = '3a503286a4624b4ebc9d05ec073e7378'
-SPOTIPY_REDIRECT_URI = 'http://127.0.0.1:8888/callback'
+SPOTIPY_CLIENT_ID = os.getenv('SPOTIPY_CLIENT_ID')
+SPOTIPY_CLIENT_SECRET = os.getenv('SPOTIPY_CLIENT_SECRET')
+SPOTIPY_REDIRECT_URI = os.getenv('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')
 SCOPE = 'user-read-recently-played'
 
 # Google Sheets Configuration
-GOOGLE_CREDENTIALS_FILE = 'logger.json'
-SPREADSHEET_NAME = 'Spotify Listening History'
+GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE', 'logger.json')
+SPREADSHEET_NAME = os.getenv('SPREADSHEET_NAME', 'Spotify Listening History')
 
 def setup_spotify():
     """Initialize Spotify client with authentication"""
+    if not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
+        raise ValueError("Missing Spotify credentials! Please check your .env file.")
+    cache_path = os.getenv('CACHE_PATH', '.cache')
+
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
         client_id=SPOTIPY_CLIENT_ID,
         client_secret=SPOTIPY_CLIENT_SECRET,
         redirect_uri=SPOTIPY_REDIRECT_URI,
-        scope=SCOPE
+        scope=SCOPE,
+        cache_path=cache_path,
+        open_browser=False 
     ))
     return sp
 
@@ -50,13 +68,13 @@ def setup_google_sheets():
                 'Played At', 'Track Name', 'Artist(s)', 
                 'Album', 'Duration (ms)', 'Track ID', 'Genres'
             ], index=1)
-            print("✓ Headers added to spreadsheet")
+            print("[OK] Headers added to spreadsheet")
         
-        print(f"✓ Connected to spreadsheet: '{SPREADSHEET_NAME}'")
+        print(f"[OK] Connected to spreadsheet: '{SPREADSHEET_NAME}'")
         return worksheet
         
     except gspread.SpreadsheetNotFound:
-        print(f"\n✗ ERROR: Spreadsheet '{SPREADSHEET_NAME}' not found!")
+        print(f"\n[ERROR] Spreadsheet '{SPREADSHEET_NAME}' not found!")
         print("\nPlease create the spreadsheet manually:")
         print("1. Go to https://sheets.google.com")
         print(f"2. Create a new blank spreadsheet")
@@ -164,12 +182,12 @@ def get_recently_played(sp, worksheet):
         # Append new tracks to sheet
         if new_tracks:
             worksheet.append_rows(new_tracks)
-            print(f"✓ Logged {len(new_tracks)} new tracks")
+            print(f"[OK] Logged {len(new_tracks)} new tracks")
             print("   New tracks added:")
             for track in new_tracks:
                 print(f"   - {track[1]} at {track[0]}")
         else:
-            print("✓ No new tracks to log (all already in sheet)")
+            print("[OK] No new tracks to log (all already in sheet)")
             
     except Exception as e:
         print(f"Error: {e}")
@@ -205,10 +223,5 @@ def run_logger(interval_minutes=10):
             time.sleep(300)
 
 if __name__ == "__main__":
-    # Run once to test
-   # sp = setup_spotify()
-   # worksheet = setup_google_sheets()
-    # get_recently_played(sp, worksheet)
-    
-    # Or run continuously (check every 10 minutes)
-     run_logger(interval_minutes=10)
+    # Run continuously (check every 10 minutes)
+    run_logger(interval_minutes=10)

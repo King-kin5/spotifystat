@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Logger Dashboard</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1DB954 0%, #191414 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 15px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 15px;
+        }
+
+        h1 {
+            font-size: clamp(1.75rem, 5vw, 3rem);
+            margin-bottom: 10px;
+            color: #1DB954;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            word-break: break-word;
+        }
+
+        .subtitle {
+            font-size: clamp(0.9rem, 2.5vw, 1.2rem);
+            color: #b3b3b3;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: clamp(15px, 3vw, 30px);
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .controls h2 {
+            margin-bottom: 15px;
+            color: #1DB954;
+            font-size: clamp(1.1rem, 3vw, 1.5rem);
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #1DB954 0%, #1ed760 100%);
+            color: white;
+            border: none;
+            padding: clamp(12px, 2vw, 15px) clamp(15px, 3vw, 25px);
+            border-radius: 50px;
+            font-size: clamp(0.85rem, 2vw, 1rem);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(29, 185, 84, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+        }
+
+        button.stop:hover {
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.6);
+        }
+
+        button.clear {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            box-shadow: 0 4px 15px rgba(243, 156, 18, 0.4);
+        }
+
+        button.clear:hover {
+            box-shadow: 0 6px 20px rgba(243, 156, 18, 0.6);
+        }
+
+        .status-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .status-indicator span:last-child {
+            font-size: clamp(0.8rem, 2vw, 0.95rem);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #95a5a6;
+            animation: pulse 2s infinite;
+            flex-shrink: 0;
+        }
+
+        .status-dot.running {
+            background: #1DB954;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .terminal-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: clamp(15px, 3vw, 30px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .terminal-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .terminal-header h2 {
+            color: #1DB954;
+            font-size: clamp(1.1rem, 3vw, 1.5rem);
+        }
+
+        .terminal {
+            background: #1e1e1e;
+            border-radius: 10px;
+            padding: 15px;
+            height: clamp(300px, 50vh, 400px);
+            overflow-y: auto;
+            overflow-x: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: clamp(0.75rem, 1.8vw, 0.9rem);
+            line-height: 1.6;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .terminal::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .terminal::-webkit-scrollbar-track {
+            background: #2c2c2c;
+            border-radius: 10px;
+        }
+
+        .terminal::-webkit-scrollbar-thumb {
+            background: #1DB954;
+            border-radius: 10px;
+        }
+
+        #terminal-content {
+            color: #d4d4d4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .info-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            background: rgba(29, 185, 84, 0.2);
+            border-radius: 20px;
+            font-size: clamp(0.75rem, 1.8vw, 0.85rem);
+            color: #1DB954;
+            border: 1px solid rgba(29, 185, 84, 0.3);
+            white-space: nowrap;
+        }
+
+        /* Small mobile devices */
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            .button-group {
+                grid-template-columns: 1fr;
+            }
+
+            .status-bar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .status-indicator {
+                width: 100%;
+            }
+
+            .info-badge {
+                align-self: flex-end;
+            }
+
+            button {
+                letter-spacing: 0.3px;
+            }
+        }
+
+        /* Medium tablets */
+        @media (min-width: 481px) and (max-width: 768px) {
+            .button-group {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Large tablets and small desktops */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .button-group {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        /* Landscape orientation adjustments */
+        @media (max-height: 600px) and (orientation: landscape) {
+            .terminal {
+                height: 250px;
+            }
+
+            header {
+                margin-bottom: 15px;
+            }
+
+            .controls, .terminal-section {
+                margin-bottom: 15px;
+            }
+        }
+
+        /* High resolution displays */
+        @media (min-width: 1400px) {
+            .container {
+                max-width: 1400px;
+            }
+        }
+
+        /* Touch device optimizations */
+        @media (hover: none) and (pointer: coarse) {
+            button {
+                padding: 14px 20px;
+                min-height: 44px; /* iOS touch target size */
+            }
+
+            .terminal {
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                color: black;
+            }
+
+            button, .controls {
+                display: none;
+            }
+
+            .terminal {
+                border: 1px solid #ccc;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Spotify Logger Dashboard</h1>
+            <p class="subtitle">Track your listening history in real-time</p>
+        </header>
+
+        <div class="controls">
+            <h2>Script Controls</h2>
+            <div class="button-group">
+                <button 
+                    hx-post="/run-script/log.py" 
+                    hx-swap="none"
+                    hx-indicator=".loading"
+                    aria-label="Run log.py script">
+                    ▶️ Run log.py
+                </button>
+                <button 
+                    hx-post="/run-script/logger.py" 
+                    hx-swap="none"
+                    hx-indicator=".loading"
+                    aria-label="Run logger.py script">
+                    ▶️ Run logger.py
+                </button>
+                <button 
+                    class="stop"
+                    hx-post="/stop-script/log.py" 
+                    hx-swap="none"
+                    aria-label="Stop log.py script">
+                    ⏹️ Stop log.py
+                </button>
+                <button 
+                    class="stop"
+                    hx-post="/stop-script/logger.py" 
+                    hx-swap="none"
+                    aria-label="Stop logger.py script">
+                    ⏹️ Stop logger.py
+                </button>
+                <button 
+                    class="clear"
+                    hx-post="/clear-log" 
+                    hx-swap="none"
+                    aria-label="Clear log">
+                    🗑️ Clear Log
+                </button>
+            </div>
+
+            <div class="status-bar">
+                <div class="status-indicator">
+                    <span class="status-dot" id="log-status" aria-hidden="true"></span>
+                    <span>log.py: <span id="log-status-text">Not Running</span></span>
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot" id="logger-status" aria-hidden="true"></span>
+                    <span>logger.py: <span id="logger-status-text">Not Running</span></span>
+                </div>
+                <div class="info-badge">
+                    Auto-refresh: Every 2s
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal-section">
+            <div class="terminal-header">
+                <h2>📊 Live Activity Log</h2>
+                <div class="info-badge">
+                    Updates every 10 minutes
+                </div>
+            </div>
+            <div class="terminal" role="log" aria-live="polite" aria-atomic="false">
+                <div 
+                    id="terminal-content"
+                    hx-get="/get-updates" 
+                    hx-trigger="every 2s"
+                    hx-swap="innerHTML">
+                    Loading logs...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Update status indicators
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                const status = await response.json();
+                
+                // Update log.py status
+                const logStatus = document.getElementById('log-status');
+                const logText = document.getElementById('log-status-text');
+                if (status['log.py'] && status['log.py'].running) {
+                    logStatus.classList.add('running');
+                    logText.textContent = `Running (PID: ${status['log.py'].pid})`;
+                } else {
+                    logStatus.classList.remove('running');
+                    logText.textContent = 'Not Running';
+                }
+                
+                // Update logger.py status
+                const loggerStatus = document.getElementById('logger-status');
+                const loggerText = document.getElementById('logger-status-text');
+                if (status['logger.py'] && status['logger.py'].running) {
+                    loggerStatus.classList.add('running');
+                    loggerText.textContent = `Running (PID: ${status['logger.py'].pid})`;
+                } else {
+                    loggerStatus.classList.remove('running');
+                    loggerText.textContent = 'Not Running';
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        // Auto-scroll terminal to bottom
+        function scrollTerminal() {
+            const terminal = document.querySelector('.terminal');
+            if (terminal) {
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        }
+
+        // Update status every 2 seconds
+        setInterval(updateStatus, 2000);
+        updateStatus(); // Initial call
+
+        // Scroll terminal on content update
+        document.addEventListener('htmx:afterSwap', (event) => {
+            if (event.detail.target.id === 'terminal-content') {
+                scrollTerminal();
+            }
+        });
+
+        // Handle HTMX responses to show user feedback
+        document.body.addEventListener('htmx:afterRequest', (event) => {
+            if (event.detail.xhr.status === 200) {
+                updateStatus(); // Refresh status after actions
+            }
+        });
+
+        // Handle resize events
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                scrollTerminal();
+            }, 250);
+        });
+    </script>
+</body>
+</html>
