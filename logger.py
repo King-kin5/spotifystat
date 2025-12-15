@@ -1,3 +1,4 @@
+import json
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import gspread
@@ -44,14 +45,37 @@ def setup_google_sheets():
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
     ]
-    creds = Credentials.from_service_account_file(
-        GOOGLE_CREDENTIALS_FILE, 
-        scopes=scopes
-    )
+    
+    # Check if credentials are in environment variable (for Render/cloud deployment)
+    google_creds_json = os.getenv('GOOGLE_CREDENTIALS_FILE')
+    
+    if google_creds_json:
+        # Load from environment variable
+        try:
+            creds_dict = json.loads(google_creds_json)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            print("[OK] Loaded Google credentials from environment variable")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in GOOGLE_CREDENTIALS_JSON: {e}")
+    else:
+        # Load from file (for local development)
+        google_creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'logger.json')
+        if not os.path.exists(google_creds_file):
+            raise FileNotFoundError(
+                f"Google credentials file '{google_creds_file}' not found. "
+                "Please set GOOGLE_CREDENTIALS_JSON environment variable or provide the file."
+            )
+        creds = Credentials.from_service_account_file(google_creds_file, scopes=scopes)
+        print(f"[OK] Loaded Google credentials from file: {google_creds_file}")
+    
     client = gspread.authorize(creds)
+    
+    # Open existing spreadsheet (must be created manually)
     try:
         spreadsheet = client.open(SPREADSHEET_NAME)
         worksheet = spreadsheet.sheet1
+        
+        # Check if headers exist, if not add them
         headers = worksheet.row_values(1)
         if not headers or headers[0] != 'Played At':
             worksheet.insert_row([
@@ -59,8 +83,10 @@ def setup_google_sheets():
                 'Album', 'Duration (ms)', 'Track ID', 'Genres'
             ], index=1)
             print("[OK] Headers added to spreadsheet")
+        
         print(f"[OK] Connected to spreadsheet: '{SPREADSHEET_NAME}'")
         return worksheet
+        
     except gspread.SpreadsheetNotFound:
         print(f"\n[ERROR] Spreadsheet '{SPREADSHEET_NAME}' not found!")
         print("\nPlease create the spreadsheet manually:")
@@ -68,13 +94,17 @@ def setup_google_sheets():
         print(f"2. Create a new blank spreadsheet")
         print(f"3. Rename it to: '{SPREADSHEET_NAME}'")
         print(f"4. Click 'Share' and add this email as Editor:")
-        import json
-        with open(GOOGLE_CREDENTIALS_FILE, 'r') as f:
-            creds_data = json.load(f)
-            print(f"   {creds_data['client_email']}")
+        
+        # Show the service account email
+        if google_creds_json:
+            creds_data = json.loads(google_creds_json)
+        else:
+            with open(google_creds_file, 'r') as f:
+                creds_data = json.load(f)
+        print(f"   {creds_data['client_email']}")
+        
         print("\n5. Run this script again!\n")
-        exit(1)
-
+       
 def get_artist_genres(sp, artist_id):
     """Get genres for an artist"""
     try:

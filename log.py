@@ -7,6 +7,7 @@ import time
 import os
 import sys
 import io
+import json
 from dotenv import load_dotenv
 
 # Fix Unicode encoding issues on Windows
@@ -24,7 +25,6 @@ SPOTIPY_REDIRECT_URI = os.getenv('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/
 SCOPE = 'user-read-recently-played'
 
 # Google Sheets Configuration
-GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE', 'logger.json')
 SPREADSHEET_NAME = os.getenv('SPREADSHEET_NAME', 'Spotify Listening History')
 
 def setup_spotify():
@@ -50,10 +50,28 @@ def setup_google_sheets():
         'https://www.googleapis.com/auth/drive'
     ]
     
-    creds = Credentials.from_service_account_file(
-        GOOGLE_CREDENTIALS_FILE, 
-        scopes=scopes
-    )
+    # Check if credentials are in environment variable (for Render/cloud deployment)
+    google_creds_json = os.getenv('GOOGLE_CREDENTIALS_FILE')
+    
+    if google_creds_json:
+        # Load from environment variable
+        try:
+            creds_dict = json.loads(google_creds_json)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            print("[OK] Loaded Google credentials from environment variable")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in GOOGLE_CREDENTIALS_JSON: {e}")
+    else:
+        # Load from file (for local development)
+        google_creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'logger.json')
+        if not os.path.exists(google_creds_file):
+            raise FileNotFoundError(
+                f"Google credentials file '{google_creds_file}' not found. "
+                "Please set GOOGLE_CREDENTIALS_JSON environment variable or provide the file."
+            )
+        creds = Credentials.from_service_account_file(google_creds_file, scopes=scopes)
+        print(f"[OK] Loaded Google credentials from file: {google_creds_file}")
+    
     client = gspread.authorize(creds)
     
     # Open existing spreadsheet (must be created manually)
@@ -82,10 +100,12 @@ def setup_google_sheets():
         print(f"4. Click 'Share' and add this email as Editor:")
         
         # Show the service account email
-        import json
-        with open(GOOGLE_CREDENTIALS_FILE, 'r') as f:
-            creds_data = json.load(f)
-            print(f"   {creds_data['client_email']}")
+        if google_creds_json:
+            creds_data = json.loads(google_creds_json)
+        else:
+            with open(google_creds_file, 'r') as f:
+                creds_data = json.load(f)
+        print(f"   {creds_data['client_email']}")
         
         print("\n5. Run this script again!\n")
         exit(1)
