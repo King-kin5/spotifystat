@@ -31,14 +31,21 @@ SPREADSHEET_NAME = os.getenv('SPREADSHEET_NAME', 'Spotify Listening History')
 # Custom cache handler that inherits from CacheHandler
 class RefreshTokenCacheHandler(CacheHandler):
     """Custom cache handler for using a refresh token"""
-    def __init__(self, refresh_token):
+    def __init__(self, refresh_token, access_token=''):
         self.refresh_token = refresh_token
-        self.token_info = None
+        self.token_info = {
+            'refresh_token': refresh_token,
+            'access_token': access_token,
+            'expires_at': 0  # Force refresh on first use
+        }
     
     def get_cached_token(self):
         return self.token_info
     
     def save_token_to_cache(self, token_info):
+        # Preserve the refresh token
+        if 'refresh_token' not in token_info and self.refresh_token:
+            token_info['refresh_token'] = self.refresh_token
         self.token_info = token_info
 
 def setup_spotify():
@@ -52,8 +59,10 @@ def setup_spotify():
     if refresh_token:
         # Use refresh token (server mode)
         print("[OK] Using Spotify refresh token from environment")
+        print(f"[DEBUG] Refresh token starts with: {refresh_token[:20]}...")
         
-        cache_handler = RefreshTokenCacheHandler(refresh_token)
+        access_token = os.getenv('SPOTIFY_ACCESS_TOKEN', '')
+        cache_handler = RefreshTokenCacheHandler(refresh_token, access_token)
         
         sp_oauth = SpotifyOAuth(
             client_id=SPOTIPY_CLIENT_ID,
@@ -64,13 +73,19 @@ def setup_spotify():
             open_browser=False
         )
         
-        # Manually set the refresh token
-        token_info = {
-            'refresh_token': refresh_token,
-            'access_token': os.getenv('SPOTIFY_ACCESS_TOKEN', ''),
-            'expires_at': 0  # Force refresh on first use
-        }
-        cache_handler.save_token_to_cache(token_info)
+        # Try to validate/refresh the token
+        try:
+            token_info = sp_oauth.validate_token(cache_handler.get_cached_token())
+            if not token_info:
+                print("[INFO] Refreshing expired token...")
+                token_info = sp_oauth.refresh_access_token(refresh_token)
+                cache_handler.save_token_to_cache(token_info)
+            print("[OK] Token validated successfully")
+        except Exception as e:
+            print(f"[ERROR] Token validation failed: {e}")
+            print("[ERROR] Please check if your SPOTIFY_REFRESH_TOKEN is valid")
+            print("[ERROR] You may need to run get_spotify_tokens.py again to get a new refresh token")
+            raise
         
         sp = spotipy.Spotify(auth_manager=sp_oauth)
     else:

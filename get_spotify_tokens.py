@@ -12,7 +12,7 @@ load_dotenv()
 
 SPOTIPY_CLIENT_ID = os.getenv('SPOTIPY_CLIENT_ID')
 SPOTIPY_CLIENT_SECRET = os.getenv('SPOTIPY_CLIENT_SECRET')
-SPOTIPY_REDIRECT_URI = 'http://127.0.0.1:8888/callback'
+SPOTIPY_REDIRECT_URI = 'https://spotifystat.onrender.com/callback'
 SCOPE = 'user-read-recently-played'
 
 print("=" * 60)
