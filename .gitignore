@@ -29,3 +29,5 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+spotify_tokens.txt

@@ -1,4 +1,3 @@
-import json
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import gspread
@@ -8,6 +7,7 @@ import time
 import os
 import sys
 import io
+import json
 from dotenv import load_dotenv
 
 # Fix Unicode encoding issues on Windows
@@ -24,19 +24,62 @@ SPOTIPY_REDIRECT_URI = os.getenv('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/
 SCOPE = 'user-read-recently-played'
 
 # Google Sheets Configuration 
-GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE', 'logger.json')
 SPREADSHEET_NAME = os.getenv('SPREADSHEET_NAME', 'Spotify Listening History')
 
 def setup_spotify():
     """Initialize Spotify client with authentication"""
     if not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
         raise ValueError("Missing Spotify credentials! Please check your .env file.")
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-        client_id=SPOTIPY_CLIENT_ID,
-        client_secret=SPOTIPY_CLIENT_SECRET,
-        redirect_uri=SPOTIPY_REDIRECT_URI,
-        scope=SCOPE
-    ))
+    
+    # Check if we have a refresh token (for server/cloud deployment)
+    refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
+    
+    if refresh_token:
+        # Use refresh token (server mode)
+        print("[OK] Using Spotify refresh token from environment")
+        
+        # Create a custom cache handler that uses the refresh token
+        class RefreshTokenCacheHandler:
+            def __init__(self, refresh_token):
+                self.refresh_token = refresh_token
+                self.token_info = None
+            
+            def get_cached_token(self):
+                return self.token_info
+            
+            def save_token_to_cache(self, token_info):
+                self.token_info = token_info
+        
+        cache_handler = RefreshTokenCacheHandler(refresh_token)
+        
+        sp_oauth = SpotifyOAuth(
+            client_id=SPOTIPY_CLIENT_ID,
+            client_secret=SPOTIPY_CLIENT_SECRET,
+            redirect_uri=SPOTIPY_REDIRECT_URI,
+            scope=SCOPE,
+            cache_handler=cache_handler,
+            open_browser=False
+        )
+        
+        # Manually set the refresh token
+        token_info = {
+            'refresh_token': refresh_token,
+            'access_token': os.getenv('SPOTIFY_ACCESS_TOKEN', ''),
+            'expires_at': 0  # Force refresh on first use
+        }
+        cache_handler.save_token_to_cache(token_info)
+        
+        sp = spotipy.Spotify(auth_manager=sp_oauth)
+    else:
+        # Interactive mode (local development)
+        print("[OK] Using interactive Spotify authentication")
+        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=SPOTIPY_CLIENT_ID,
+            client_secret=SPOTIPY_CLIENT_SECRET,
+            redirect_uri=SPOTIPY_REDIRECT_URI,
+            scope=SCOPE
+        ))
+    
     return sp
 
 def setup_google_sheets():
@@ -70,12 +113,9 @@ def setup_google_sheets():
     
     client = gspread.authorize(creds)
     
-    # Open existing spreadsheet (must be created manually)
     try:
         spreadsheet = client.open(SPREADSHEET_NAME)
         worksheet = spreadsheet.sheet1
-        
-        # Check if headers exist, if not add them
         headers = worksheet.row_values(1)
         if not headers or headers[0] != 'Played At':
             worksheet.insert_row([
@@ -83,10 +123,8 @@ def setup_google_sheets():
                 'Album', 'Duration (ms)', 'Track ID', 'Genres'
             ], index=1)
             print("[OK] Headers added to spreadsheet")
-        
         print(f"[OK] Connected to spreadsheet: '{SPREADSHEET_NAME}'")
         return worksheet
-        
     except gspread.SpreadsheetNotFound:
         print(f"\n[ERROR] Spreadsheet '{SPREADSHEET_NAME}' not found!")
         print("\nPlease create the spreadsheet manually:")
@@ -104,7 +142,8 @@ def setup_google_sheets():
         print(f"   {creds_data['client_email']}")
         
         print("\n5. Run this script again!\n")
-       
+        exit(1)
+
 def get_artist_genres(sp, artist_id):
     """Get genres for an artist"""
     try:

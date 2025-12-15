@@ -31,16 +31,60 @@ def setup_spotify():
     """Initialize Spotify client with authentication"""
     if not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
         raise ValueError("Missing Spotify credentials! Please check your .env file.")
-    cache_path = os.getenv('CACHE_PATH', '.cache')
-
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-        client_id=SPOTIPY_CLIENT_ID,
-        client_secret=SPOTIPY_CLIENT_SECRET,
-        redirect_uri=SPOTIPY_REDIRECT_URI,
-        scope=SCOPE,
-        cache_path=cache_path,
-        open_browser=False 
-    ))
+    
+    # Check if we have a refresh token (for server/cloud deployment)
+    refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
+    
+    if refresh_token:
+        # Use refresh token (server mode)
+        print("[OK] Using Spotify refresh token from environment")
+        
+        # Create a custom cache handler that uses the refresh token
+        class RefreshTokenCacheHandler:
+            def __init__(self, refresh_token):
+                self.refresh_token = refresh_token
+                self.token_info = None
+            
+            def get_cached_token(self):
+                return self.token_info
+            
+            def save_token_to_cache(self, token_info):
+                self.token_info = token_info
+        
+        cache_handler = RefreshTokenCacheHandler(refresh_token)
+        
+        sp_oauth = SpotifyOAuth(
+            client_id=SPOTIPY_CLIENT_ID,
+            client_secret=SPOTIPY_CLIENT_SECRET,
+            redirect_uri=SPOTIPY_REDIRECT_URI,
+            scope=SCOPE,
+            cache_handler=cache_handler,
+            open_browser=False
+        )
+        
+        # Manually set the refresh token
+        token_info = {
+            'refresh_token': refresh_token,
+            'access_token': os.getenv('SPOTIFY_ACCESS_TOKEN', ''),
+            'expires_at': 0  # Force refresh on first use
+        }
+        cache_handler.save_token_to_cache(token_info)
+        
+        sp = spotipy.Spotify(auth_manager=sp_oauth)
+    else:
+        # Interactive mode (local development)
+        print("[OK] Using interactive Spotify authentication")
+        cache_path = os.getenv('CACHE_PATH', '.cache')
+        
+        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=SPOTIPY_CLIENT_ID,
+            client_secret=SPOTIPY_CLIENT_SECRET,
+            redirect_uri=SPOTIPY_REDIRECT_URI,
+            scope=SCOPE,
+            cache_path=cache_path,
+            open_browser=False 
+        ))
+    
     return sp
 
 def setup_google_sheets():
