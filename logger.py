@@ -1,5 +1,6 @@
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from spotipy.cache_handler import CacheHandler
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timezone
@@ -26,6 +27,19 @@ SCOPE = 'user-read-recently-played'
 # Google Sheets Configuration 
 SPREADSHEET_NAME = os.getenv('SPREADSHEET_NAME', 'Spotify Listening History')
 
+# Custom cache handler that inherits from CacheHandler
+class RefreshTokenCacheHandler(CacheHandler):
+    """Custom cache handler for using a refresh token"""
+    def __init__(self, refresh_token):
+        self.refresh_token = refresh_token
+        self.token_info = None
+    
+    def get_cached_token(self):
+        return self.token_info
+    
+    def save_token_to_cache(self, token_info):
+        self.token_info = token_info
+
 def setup_spotify():
     """Initialize Spotify client with authentication"""
     if not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
@@ -37,18 +51,6 @@ def setup_spotify():
     if refresh_token:
         # Use refresh token (server mode)
         print("[OK] Using Spotify refresh token from environment")
-        
-        # Create a custom cache handler that uses the refresh token
-        class RefreshTokenCacheHandler:
-            def __init__(self, refresh_token):
-                self.refresh_token = refresh_token
-                self.token_info = None
-            
-            def get_cached_token(self):
-                return self.token_info
-            
-            def save_token_to_cache(self, token_info):
-                self.token_info = token_info
         
         cache_handler = RefreshTokenCacheHandler(refresh_token)
         
